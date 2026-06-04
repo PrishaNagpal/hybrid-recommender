@@ -1,10 +1,10 @@
-import numpy as np
 import joblib
 import os
 import hashlib
 import json
 import subprocess
 import sys
+
 
 class FeatureStore:
     """
@@ -57,22 +57,30 @@ class FeatureStore:
     def _verify_hash(self, path):
         """Verify file hash against manifest before loading."""
         if not os.path.exists(self._manifest_path):
-            raise RuntimeError(f"Manifest not found. File '{path}' cannot be verified.")
+            raise RuntimeError(
+                f"Manifest not found. File '{path}' cannot be verified."
+            )
         with open(self._manifest_path, "r") as f:
             manifest = json.load(f)
         if path not in manifest:
-            raise RuntimeError(f"No hash found for '{path}' in manifest.")
+            raise RuntimeError(
+                f"No hash found for '{path}' in manifest."
+            )
         actual = self._compute_hash(path)
         if actual != manifest[path]:
-            raise RuntimeError(f"Hash mismatch for '{path}'. File may have been tampered with.")
+            raise RuntimeError(
+                f"Hash mismatch for '{path}'. "
+                f"File may have been tampered with."
+            )
 
     def _validate_magic_bytes(self, path):
         """Validate joblib magic bytes before deserializing."""
         with open(path, "rb") as f:
             header = f.read(2)
-        # joblib files are zlib-compressed and start with 0x78
         if header[:1] not in (b'\x78', b'\x1f'):
-            raise RuntimeError(f"Invalid file format for '{path}'. Expected joblib file.")
+            raise RuntimeError(
+                f"Invalid file format for '{path}'. Expected joblib file."
+            )
 
     def _persist(self, filename, data):
         path = os.path.join(self.store_path, filename)
@@ -86,10 +94,14 @@ class FeatureStore:
             self._validate_magic_bytes(path)
             result = subprocess.run(
                 [sys.executable, "-c",
-                 f"import joblib, json; data = joblib.load('{path}'); print(json.dumps({{k: v.tolist() if hasattr(v, 'tolist') else v for k, v in data.items()}}))"],
+                 f"import joblib, json; data = joblib.load('{path}'); "
+                 f"print(json.dumps({{k: v.tolist() "
+                 f"if hasattr(v, 'tolist') else v "
+                 f"for k, v in data.items()}}))"],
                 capture_output=True, text=True, timeout=30
             )
             if result.returncode != 0:
-                raise RuntimeError(f"Failed to load '{path}' safely: {result.stderr}")
+                raise RuntimeError(
+                    f"Failed to load '{path}' safely: {result.stderr}"
+                )
             target.update(joblib.load(path))
-            
