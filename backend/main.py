@@ -2582,6 +2582,25 @@ def create_purchase(
         'review_text': data.review_text,  # max_length=1000 enforced by PurchaseCreate
     }).execute()
     _clear_response_cache()
+
+    # Issue #1596: Perform micro-update of latent vectors in memory
+    try:
+        if "collab" in models and models["collab"]:
+            collab_model = models["collab"]
+            item_df = models.get("item_df")
+            if item_df is not None:
+                matched = item_df[item_df['id'] == data.product_id]
+                if not matched.empty:
+                    title = matched.iloc[0]['title']
+                    collab_model.online_update(
+                        user_id=data.user_id,
+                        title=title,
+                        rating=data.rating
+                    )
+                    logger.info("Micro-updated latent vectors for user %s, item %s", data.user_id, title)
+    except Exception as e:
+        logger.warning("Failed to perform online micro-update: %s", e)
+
     return {"purchase": result.data}
 # ── Trending Products ───────────────────────────────────────────────
 
