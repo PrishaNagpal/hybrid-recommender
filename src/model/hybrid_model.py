@@ -215,6 +215,11 @@ class HybridRecommender:
         if random.random() < self.epsilon:
             return random.randint(0, len(self.bandit_arms) - 1)
 
+
+    def select_bandit_arm(self):
+        import random
+        if random.random() < self.epsilon:
+            return random.randint(0, len(self.bandit_arms) - 1)
         best_arm = max(
             self.arm_rewards,
             key=lambda x: self.arm_rewards[x] / max(self.arm_counts[x], 1)
