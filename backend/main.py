@@ -1432,6 +1432,88 @@ def search_items(
     return final_output
 
 
+# ── Feature: Paginated Recommendations ───────────────────────────────
+@app.get("/api/recommend/paginated")
+async def recommend_item(
+    title: str = Query(..., min_length=1, description="Item title to base recommendations on"),
+    limit: int = Query(default=20, ge=1, le=100, description="Items per page"),
+    offset: int = Query(default=0, ge=0, description="Number of items to skip"),
+    user_id: str = Query(default="", description="Optional user ID for personalised scoring"),
+):
+    """
+    Returns paginated hybrid recommendations for the given item title.
+    Supports limit/offset pagination with a pagination metadata block.
+    """
+    try:
+        all_results: list[dict] = []
+
+        # Attempt to use the hybrid model via Celery task
+        try:
+            from src.model.hybrid_model import HybridRecommender
+            from src.model.content_model import ContentRecommender
+            from src.model.collaborative_model import CollaborativeRecommender
+
+            dm = getattr(sys.modules.get("__main__"), "_dataset_manager", None)
+            if dm is None:
+                from src.data.dataset_manager import DatasetManager
+                dm = DatasetManager()
+            item_df = getattr(dm, "_item_df", None) or getattr(dm, "item_df", None)
+            interaction_df = getattr(dm, "_interaction_df", None) or getattr(dm, "interaction_df", None)
+
+            if item_df is not None and not item_df.empty:
+                content_model = ContentRecommender(item_df)
+                
+                import os
+                from src.model.neural_collaborative_model import NeuralCollaborativeRecommender
+                use_ncf = os.getenv("USE_NCF", "true").lower() == "true"
+                
+                if interaction_df is not None and not interaction_df.empty:
+                    if use_ncf:
+                        collab_model = NeuralCollaborativeRecommender(interaction_df)
+                    else:
+                        collab_model = CollaborativeRecommender(interaction_df)
+                else:
+                    collab_model = None
+                
+                hybrid = HybridRecommender(content_model, collab_model, item_df)
+                all_results = hybrid.recommend(title=title, user_id=user_id or None, top_n=limit + offset)
+        except Exception:
+            logger.warning("Hybrid model unavailable, using fallback recommendations")
+
+            # Fallback: return mock products sorted by title similarity
+            if not all_results:
+                query = title.lower()
+                scored = []
+                for p in MOCK_PRODUCTS:
+                    score = sum(1 for w in query.split() if w in p["title"].lower())
+                    if score > 0 or query in p["category"].lower():
+                        scored.append({**p, "hybrid_score": score, "content_score": score, "collab_score": 0})
+                scored.sort(key=lambda x: x["hybrid_score"], reverse=True)
+                all_results = scored if scored else [{
+                    "title": p["title"],
+                    "rating": p["rating"],
+                    "hybrid_score": 0.5,
+                    "content_score": 0.3,
+                    "collab_score": 0.2,
+                    "category": p["category"],
+                    "review_count": p.get("review_count", 0),
+                } for p in MOCK_PRODUCTS[:3]]
+
+            total = len(all_results)
+            paginated = all_results[offset:offset + limit]
+
+            return {
+                "recommendations": paginated,
+                "pagination": {
+                    "total": total,
+                    "limit": limit,
+                    "offset": offset,
+                    "next_offset": offset + limit if offset + limit < total else None,
+                    "has_more": (offset + limit) < total,
+                },
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/recommendations/{item_id}/explanation")
