@@ -115,6 +115,45 @@ from issue_triage import triage_issue
 # ── App ──────────────────────────────────────────────────────────────
 app = FastAPI(title="Hybrid Recommender API", version="3.0")
 
+from src.evaluation.evaluation import run_evaluation
+
+EVALUATION_HISTORY = deque(maxlen=20)
+
+@app.get("/api/evaluate")
+async def evaluate_models(
+    k: int = 10,
+    mode: str = "all",
+    alpha: float = 0.4,
+    beta: float = 0.35,
+    gamma: float = 0.25,
+):
+    try:
+        results = run_evaluation(
+            k=k,
+            mode=mode,
+            weights={"alpha": alpha, "beta": beta, "gamma": gamma}
+        )
+        
+        # Save to history
+        run_record = {
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "k": k,
+            "mode": mode,
+            "weights": {"alpha": alpha, "beta": beta, "gamma": gamma},
+            "results": results,
+        }
+        EVALUATION_HISTORY.appendleft(run_record)
+        
+        return {"results": results}
+    except Exception as e:
+        logger.error(f"Evaluation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/evaluate/history")
+async def evaluate_history(limit: int = 5):
+    history = list(EVALUATION_HISTORY)[:limit]
+    return {"runs": history}
+
 # Register routers
 app.include_router(recommend.router, prefix="/api")
 
