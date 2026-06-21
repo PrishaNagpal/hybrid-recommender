@@ -2539,6 +2539,9 @@ def get_categories():
     except Exception as e:
         logger.error("Failed to retrieve categories: %s", e)
         return {"categories": []}
+
+
+
 @app.post("/api/interactions")
 def log_interaction(data: InteractionCreate):
     USER_INTERACTIONS.append({
