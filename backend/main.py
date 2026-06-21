@@ -2557,7 +2557,6 @@ def get_categories():
         return {"categories": []}
 
 
-
 @app.post("/api/interactions")
 def log_interaction(data: InteractionCreate):
     USER_INTERACTIONS.append({
